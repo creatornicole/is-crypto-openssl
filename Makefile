@@ -1,5 +1,5 @@
 PROGNAME=s91187
-SSLDIR=~/src/openssl-3.6.0
+SSLDIR=/usr
 SSLLIBFLAGS=-lcrypto
 SSLFLAGS=-L $(SSLDIR) -isystem $(SSLDIR)/include
 
