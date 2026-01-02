@@ -373,9 +373,7 @@ int main()
 	unsigned char *read = matching_plain; // zeigt auf das aktuelle Zeichen zum Lesen
 	unsigned char *write = matching_plain; // zeigt auf die Position, wo das nächste Zeichen im angepassten Text stehen soll
 
-	// size_t original_len = strlen((char *)matching_plain);
-
-	while (*read != '\0') {
+	while (*read != '\0') { 
 		if (*read == 'i' || *read == 'u') {
 			int i_count = 0;
 			int u_count = 0;
@@ -397,9 +395,18 @@ int main()
 		}
 	}
 
-	
+	size_t affected_len = read - matching_plain; // length until '\0'
+	size_t remaining_len = plain2_len - affected_len - 1;
 
-	// printf("Ersetzter String: %s\n", matching_plain);	
+	// memcpy vom nicht-beeinträchtigten Teil
+	memcpy(write, read + 1, remaining_len);
+	write += remaining_len;
+
+	// Optional: End-Nullterminierung, falls du es als C-String verwenden willst
+	*write = '\0';
+
+	printf("%s\n", matching_plain);
+
 
 	//------------------------------------------------------------------ //
 	
