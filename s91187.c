@@ -242,11 +242,12 @@ unsigned char* pick_matching_plaintext(
 }
 
 // TODO: readme anpassen! (jetzt Entwicklung unter Linux nicht Windows!!!)
-// Fehler-/Warnungen bei Kompilierung beheben
+// + Aufgabenstellung umschrieben mit reinbringen
 
 // TODOS:
 // (Done) 1. Bisher existierenden Code ausbessern
-// 2. mit 3. und 4. von Aufgabenstellung weiter
+// 2. mit (3) und (4) von Aufgabenstellung weiter
+// 3. Fehler-/Warnungen bei Kompilierung beheben
 
 int main()
 {
@@ -348,13 +349,13 @@ int main()
 	// print_hex(buffer, outlen);
 
 	unsigned char *to_free = NULL;
-	unsigned char *matching_plaintext = pick_matching_plaintext(
+	unsigned char *matching_plain = pick_matching_plaintext(
 		plain1, hash1,
 		plain2, hash2,
 		expected_hash, hash_len,
 		&to_free
 	);
-	if (!matching_plaintext) {
+	if (!matching_plain) {
 		printf("No matching plaintext found\n");
 		ret = 1;
 		goto cleanup;
@@ -364,6 +365,45 @@ int main()
 	if (to_free) free(to_free);
 	//------------------------------------------------------------------ //
 
+	//-- Clean Up Text ------------------------------------------------- //
+	// TODO: in eigene Methode: clean_up_text
+	
+	// beeintraechtigter Text bis Nullzeichen \0
+	// matching_plain: [beeinträchtigt][\0][nicht beeinträchtigt]
+	unsigned char *read = matching_plain; // zeigt auf das aktuelle Zeichen zum Lesen
+	unsigned char *write = matching_plain; // zeigt auf die Position, wo das nächste Zeichen im angepassten Text stehen soll
+
+	// size_t original_len = strlen((char *)matching_plain);
+
+	while (*read != '\0') {
+		if (*read == 'i' || *read == 'u') {
+			int i_count = 0;
+			int u_count = 0;
+
+			// count i and u
+			while (*read == 'i' || *read == 'u') {
+				if (*read == 'i') i_count++;
+				if (*read == 'u') u_count++;
+				read++;
+			}
+
+			// replace with more frequent letter
+			*write = (i_count >= u_count) ? 'i' : 'u';
+			write++;
+
+		} else {
+			// simply copy all other chars
+			*write++ = *read++;
+		}
+	}
+
+	
+
+	// printf("Ersetzter String: %s\n", matching_plain);	
+
+	//------------------------------------------------------------------ //
+	
+
 cleanup:
 	if (k1) free(k1);
     if (k2) free(k2);
@@ -371,8 +411,8 @@ cleanup:
     if (iv2) free(iv2);
     if (c1) free(c1);
     if (c2) free(c2);
-    if (plain1 && plain1 == matching_plaintext) free(plain1);
-    if (plain2 && plain2 == matching_plaintext) free(plain2);
+    if (plain1 && plain1 == matching_plain) free(plain1);
+    if (plain2 && plain2 == matching_plain) free(plain2);
     if (hash1) free(hash1);
     if (hash2) free(hash2);
     if (expected_hash) free(expected_hash);
