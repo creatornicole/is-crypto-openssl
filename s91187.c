@@ -11,7 +11,7 @@
 #define OUT_FILE    "s91187-result.bin"
 
 //-- Helper Functions ---------------------------------------------- //
-unsigned char* read_key(const char *filepath, int key_len)
+unsigned char* read_key(const char *filepath, size_t key_len)
 {
 	// open file
 	FILE *f = fopen(filepath, "rb");
@@ -41,7 +41,7 @@ unsigned char* read_key(const char *filepath, int key_len)
 	return key;
 }
 
-unsigned char* read_iv(FILE *cipher_file, int iv_len)
+unsigned char* read_iv(FILE *cipher_file, size_t iv_len)
 {
 	// allocate memory at runtime
 	unsigned char *iv = malloc(iv_len);
@@ -71,7 +71,7 @@ FILE* open_file(const char *filepath)
 	return file;
 }
 
-int check_file_pointer(FILE *file, const char *filename, int iv_len)
+int check_file_pointer(FILE *file, const char *filename, size_t iv_len)
 {
 	long pos = ftell(file);
 	if (pos == -1L) {
@@ -90,11 +90,11 @@ int check_file_pointer(FILE *file, const char *filename, int iv_len)
 	}
 }
 
-unsigned char* read_file(FILE *file, long offset, long *data_size)
+unsigned char* read_file(FILE *file, size_t offset, size_t *data_size)
 {
 	// position file pointer and determine file size
 	fseek(file, 0, SEEK_END);
-	long filesize = ftell(file);
+	size_t filesize = ftell(file);
 	if (filesize <= 0 || offset < 0 || offset > filesize) {
 		printf("invalid file parameters: filesize=%ld, offset=%ld\n", filesize, offset);
 		return NULL;
@@ -119,8 +119,8 @@ unsigned char* read_file(FILE *file, long offset, long *data_size)
 	return txt;
 }
 
-unsigned char* decrypt(EVP_CIPHER *cipher_type, unsigned char *ciphertext, long cipher_len, 
-	unsigned char *key, unsigned char *iv, long *plaintext_len) 
+unsigned char* decrypt(EVP_CIPHER *cipher_type, unsigned char *ciphertext, size_t cipher_len, 
+	unsigned char *key, unsigned char *iv, size_t *plaintext_len) 
 {
 	// allocate memory for plaintext
 	unsigned char *plain = malloc(cipher_len);
@@ -157,7 +157,7 @@ unsigned char* decrypt(EVP_CIPHER *cipher_type, unsigned char *ciphertext, long 
 	}
 
 	// total plaintext length (must sum bytes written by Update + Final because padding may change length)
-	*plaintext_len = decrypted_len + final_len;
+	*plaintext_len = (size_t)decrypted_len + (size_t)final_len;
 	
 	// cleanup
 	EVP_CIPHER_CTX_free(ctx);
@@ -166,7 +166,7 @@ unsigned char* decrypt(EVP_CIPHER *cipher_type, unsigned char *ciphertext, long 
 	return plain;
 }
 
-unsigned char *compute_digest(EVP_MD *hash_type, const unsigned char *data, long len, int hash_len) 
+unsigned char *compute_digest(EVP_MD *hash_type, const unsigned char *data, size_t len, size_t hash_len) 
 {
 	// allocate memory for digest/hash
 	unsigned char *digest = malloc(hash_len);
@@ -212,15 +212,15 @@ unsigned char *compute_digest(EVP_MD *hash_type, const unsigned char *data, long
 	return digest;
 }
 
-void print_hex(const unsigned char *buf, int len)
+void print_hex(const unsigned char *buf, size_t len)
 {
-	for (int i = 0; i < len; i++)
+	for (size_t i = 0; i < len; i++)
 		printf("%02x", buf[i]);
 	printf("\n");
 }
 
-unsigned* encrypt(EVP_CIPHER *cipher_type, unsigned char *plain, long plain_len,
-	unsigned char *key, unsigned char *iv, long *cipher_len)
+unsigned* encrypt(EVP_CIPHER *cipher_type, unsigned char *plain, size_t plain_len,
+	unsigned char *key, unsigned char *iv, size_t *cipher_len)
 {
 	// allocate memory for cipher
 	unsigned char *cipher = malloc(plain_len);
@@ -244,7 +244,7 @@ unsigned* encrypt(EVP_CIPHER *cipher_type, unsigned char *plain, long plain_len,
 		printf("EVP_EncryptUpdate failed\n");
 		EVP_CIPHER_CTX_free(ctx);
 		free(cipher);
-		return 1;
+		return NULL;
 	}
 
 	// finalize encryption
@@ -253,17 +253,17 @@ unsigned* encrypt(EVP_CIPHER *cipher_type, unsigned char *plain, long plain_len,
 		printf("EVP_EncryptFinal_ex failed\n");
 		EVP_CIPHER_CTX_free(ctx);
 		free(cipher);
-		return 1;
+		return NULL;
 	}
 
 	// total plaintext length (must sum bytes written by Update + Final because padding may change length)
-	*cipher_len = encrypted_len + final_len;
+	*cipher_len = (size_t)encrypted_len + (size_t)final_len;
 
 	// return pointer to decrypted cleaned plain
 	return cipher;
 }
 
-unsigned char *generate_iv(int iv_len) 
+unsigned char *generate_iv(size_t iv_len) 
 {
 	unsigned char *iv = malloc(iv_len);
 	if (!iv) {
@@ -280,12 +280,12 @@ unsigned char *generate_iv(int iv_len)
 	return iv;
 }
 
-int write_file(const char *out_filepath, const unsigned char *data, int data_len)
+int write_file(const char *out_filepath, const unsigned char *data, size_t data_len)
 {
 	FILE *of = fopen(out_filepath, "wb");
 	if (!of) { perror("output file"); return 1; }
 
-	int written = fwrite(data, 1, data_len, of);
+	size_t written = fwrite(data, 1, data_len, of);
 	if (written != data_len) { perror("write error"); fclose(of); return 1; }
 
 	fclose(of);
@@ -298,10 +298,10 @@ int write_file(const char *out_filepath, const unsigned char *data, int data_len
 // returns plaintext that matches the expected hash
 // also provides nont-matching plaintext via `to_free` so it can be freed outside
 unsigned char* pick_matching_plaintext(
-	unsigned char *plain1, unsigned char *hash1, long plain1_len,
-	unsigned char *plain2, unsigned char *hash2, long plain2_len,
-	unsigned char *expected_hash, int hash_len,
-	unsigned char **to_free, long *matching_plain_len
+	unsigned char *plain1, unsigned char *hash1, size_t plain1_len,
+	unsigned char *plain2, unsigned char *hash2, size_t plain2_len,
+	unsigned char *expected_hash, size_t hash_len,
+	unsigned char **to_free, size_t *matching_plain_len
 ) {
 	if (memcmp(hash1, expected_hash, hash_len) == 0) {
 		printf("plain1 matches the expected hash.\n");
@@ -321,7 +321,7 @@ unsigned char* pick_matching_plaintext(
 
 // beeintraechtigter Text bis Nullzeichen \0
 // matching_plain: [beeinträchtigt][\0][nicht beeinträchtigt]
-void clean_up_text(unsigned char *plain, long plain_len) {
+void clean_up_text(unsigned char *plain, size_t plain_len) {
 	unsigned char *read = plain; // zeigt auf das aktuelle Zeichen zum Lesen
 	unsigned char *write = plain; // zeigt auf die Position, wo das nächste Zeichen im angepassten Text stehen soll
 
@@ -384,8 +384,8 @@ int main()
 	// EVP_aes_192_abc contains information about decrypt-function including key and iv length
 	const EVP_CIPHER *aes_type = EVP_aes_192_cbc();
 
-	int decrypt_key_len = EVP_CIPHER_key_length(aes_type);
-	int decrypt_iv_len = EVP_CIPHER_iv_length(aes_type);
+	size_t decrypt_key_len = EVP_CIPHER_key_length(aes_type);
+	size_t decrypt_iv_len = EVP_CIPHER_iv_length(aes_type);
 	//------------------------------------------------------------------ //
 
 	// printf("Key (%d Bytes) and IV (%d Bytes) for AES-192-CBC.\n", key_len, iv_len);
@@ -415,13 +415,13 @@ int main()
 	// if (check_file_pointer(c2_file, "c2_file", iv_len)) { ret = 1; goto cleanup; };
 
 	//-- Decrypt ------------------------------------------------------- //
-	long plain1_len;
-	long c1_len;
+	size_t plain1_len;
+	size_t c1_len;
 	unsigned char *c1 = read_file(c1_file, decrypt_iv_len, &c1_len);
 	unsigned char *plain1 = decrypt(aes_type, c1, c1_len, k1, iv1, &plain1_len);
 
-	long plain2_len;
-	long c2_len;
+	size_t plain2_len;
+	size_t c2_len;
 	unsigned char *c2 = read_file(c2_file, decrypt_iv_len, &c2_len);
 	unsigned char *plain2 = decrypt(aes_type, c2, c2_len, k1, iv2, &plain2_len);
 
@@ -433,7 +433,7 @@ int main()
 
 	//-- Hash ---------------------------------------------------------- //
 	const EVP_MD *sha224_type = EVP_sha224();
-	int hash_len = EVP_MD_size(sha224_type);
+	size_t hash_len = EVP_MD_size(sha224_type);
 	
 	unsigned char *hash1 = compute_digest(sha224_type, plain1, plain1_len, hash_len);
 	unsigned char *hash2 = compute_digest(sha224_type, plain2, plain2_len, hash_len);
@@ -448,14 +448,14 @@ int main()
 	// print_hex(hash2, hash_len);
 
 	//-- Compare Hashes ------------------------------------------------ //
-	long hash_size;	// filled by read_file
+	size_t hash_size;	// filled by read_file
 	unsigned char *expected_hash = read_file(expected_hash_file, 0, &hash_size);
 	if (!expected_hash) { printf("cannot read expected hash\n"); ret = 1; goto cleanup; }
 
 	// print_hex(buffer, outlen);
 
 	unsigned char *to_free = NULL;
-	long matching_plain_len;
+	size_t matching_plain_len;
 	unsigned char *matching_plain = pick_matching_plaintext(
 		plain1, hash1, plain1_len,
 		plain2, hash2, plain2_len,
@@ -477,22 +477,22 @@ int main()
 	//-- Encrypt ------------------------------------------------------- //
 	const EVP_CIPHER *sm4_ctr_type = EVP_sm4_ctr();
 
-	int encrypt_key_len = EVP_CIPHER_key_length(sm4_ctr_type);
-	int encrypt_iv_len = EVP_CIPHER_iv_length(sm4_ctr_type);
+	size_t encrypt_key_len = EVP_CIPHER_key_length(sm4_ctr_type);
+	size_t encrypt_iv_len = EVP_CIPHER_iv_length(sm4_ctr_type);
 
 	// iv notwendig: https://chatgpt.com/c/695aac5e-bcd0-8327-bf1a-38a143d039c2
 	// (pseudo)zufällig erzeugen
 	unsigned char *encrypt_iv = generate_iv(encrypt_iv_len);
 	if (!encrypt_iv) { printf("encryption iv could not be generated\n"); ret = 1; goto cleanup; }
 
-	long final_cipher_len;
+	size_t final_cipher_len;
 	unsigned char *final_cipher = encrypt(sm4_ctr_type, matching_plain, matching_plain_len, 
 											k2, encrypt_iv, &final_cipher_len);
 	
 	//------------------------------------------------------------------ //
 
 	//-- Store IV and Cipher in File ----------------------------------- //
-	int total_len = encrypt_iv_len + final_cipher_len;
+	size_t total_len = encrypt_iv_len + final_cipher_len;
 	unsigned char *final_data = malloc(total_len);
 	if (!final_data) { perror("malloc failed for final_data"); ret = 1; goto cleanup; }
 
