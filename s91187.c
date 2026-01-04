@@ -117,7 +117,7 @@ unsigned char* read_file(FILE *file, long offset, long *data_size)
 }
 
 unsigned char* decrypt(EVP_CIPHER *cipher_type, unsigned char *ciphertext, long cipher_len, 
-	unsigned char *key, unsigned char *iv, int *plaintext_len) 
+	unsigned char *key, unsigned char *iv, long *plaintext_len) 
 {
 	// allocate memory for plaintext
 	unsigned char *plain = malloc(cipher_len);
@@ -155,7 +155,7 @@ unsigned char* decrypt(EVP_CIPHER *cipher_type, unsigned char *ciphertext, long 
 
 	// total plaintext length (must sum bytes written by Update + Final because padding may change length)
 	*plaintext_len = decrypted_len + final_len;
-
+	
 	// cleanup
 	EVP_CIPHER_CTX_free(ctx);
 
@@ -163,7 +163,7 @@ unsigned char* decrypt(EVP_CIPHER *cipher_type, unsigned char *ciphertext, long 
 	return plain;
 }
 
-unsigned char *compute_digest(EVP_MD *hash_type, const unsigned char *data, int len, int hash_len) 
+unsigned char *compute_digest(EVP_MD *hash_type, const unsigned char *data, long len, int hash_len) 
 {
 	// allocate memory for digest/hash
 	unsigned char *digest = malloc(hash_len);
@@ -222,23 +222,62 @@ void print_hex(const unsigned char *buf, int len)
 // returns plaintext that matches the expected hash
 // also provides nont-matching plaintext via `to_free` so it can be freed outside
 unsigned char* pick_matching_plaintext(
-	unsigned char *plain1, unsigned char *hash1,
-	unsigned char *plain2, unsigned char *hash2,
+	unsigned char *plain1, unsigned char *hash1, long plain1_len,
+	unsigned char *plain2, unsigned char *hash2, long plain2_len,
 	unsigned char *expected_hash, int hash_len,
-	unsigned char **to_free // 
+	unsigned char **to_free, long *matching_plain_len
 ) {
 	if (memcmp(hash1, expected_hash, hash_len) == 0) {
 		printf("plain1 matches the expected hash.\n");
 		*to_free = plain2; // discard non-matching plaintext
+		*matching_plain_len = plain1_len;
 		return plain1;
 	} else if (memcmp(hash2, expected_hash, hash_len) == 0) {
 		printf("plain2 matches the expected hash.\n");
 		*to_free = plain1; // discard non-matching plaintext
+		*matching_plain_len = plain2_len;
 		return plain2;
 	} else {
 		printf("Neither plaintext matches the expected hash!\n");
 		return NULL;
 	}
+}
+
+// beeintraechtigter Text bis Nullzeichen \0
+// matching_plain: [beeinträchtigt][\0][nicht beeinträchtigt]
+unsigned char* clean_up_text(unsigned char *plain, long plain_len) {
+	unsigned char *read = plain; // zeigt auf das aktuelle Zeichen zum Lesen
+	unsigned char *write = plain; // zeigt auf die Position, wo das nächste Zeichen im angepassten Text stehen soll
+
+	while (*read != '\0') {
+		if (*read == 'i' || *read == 'u') {
+			int i_count = 0;
+			int u_count = 0;
+
+			// count i and u
+			while (*read == 'i' || *read == 'u') {
+				if (*read == 'i') i_count++;
+				if (*read == 'u') u_count++;
+				read++;
+			}
+
+			// replace with more frequent letter
+			*write = (i_count >= u_count) ? 'i' : 'u';
+			write++;
+		} else {
+			// simply copy all other chars
+			*write++ = *read++;
+		}
+	}
+
+	size_t affected_len = read - plain; // length until '\0'
+	size_t remaining_len = plain_len - affected_len -1;
+
+	// memcpy vom nicht-beeinträchtigten Teil
+	memcpy(write, read + 1, remaining_len);
+	write += remaining_len;
+
+	*write = '\0';
 }
 
 // TODO: readme anpassen! (jetzt Entwicklung unter Linux nicht Windows!!!)
@@ -248,6 +287,7 @@ unsigned char* pick_matching_plaintext(
 // (Done) 1. Bisher existierenden Code ausbessern
 // 2. mit (3) und (4) von Aufgabenstellung weiter
 // 3. Fehler-/Warnungen bei Kompilierung beheben
+// ueber Methoden Aufgabenerfuellung schreiben oder in Dok Comments oder Readme?
 
 int main()
 {
@@ -349,11 +389,12 @@ int main()
 	// print_hex(buffer, outlen);
 
 	unsigned char *to_free = NULL;
+	long matching_plain_len;
 	unsigned char *matching_plain = pick_matching_plaintext(
-		plain1, hash1,
-		plain2, hash2,
+		plain1, hash1, plain1_len,
+		plain2, hash2, plain2_len,
 		expected_hash, hash_len,
-		&to_free
+		&to_free, &matching_plain_len
 	);
 	if (!matching_plain) {
 		printf("No matching plaintext found\n");
@@ -366,44 +407,8 @@ int main()
 	//------------------------------------------------------------------ //
 
 	//-- Clean Up Text ------------------------------------------------- //
-	// TODO: in eigene Methode: clean_up_text
-	
-	// beeintraechtigter Text bis Nullzeichen \0
-	// matching_plain: [beeinträchtigt][\0][nicht beeinträchtigt]
-	unsigned char *read = matching_plain; // zeigt auf das aktuelle Zeichen zum Lesen
-	unsigned char *write = matching_plain; // zeigt auf die Position, wo das nächste Zeichen im angepassten Text stehen soll
+	clean_up_text(matching_plain, matching_plain_len);
 
-	while (*read != '\0') { 
-		if (*read == 'i' || *read == 'u') {
-			int i_count = 0;
-			int u_count = 0;
-
-			// count i and u
-			while (*read == 'i' || *read == 'u') {
-				if (*read == 'i') i_count++;
-				if (*read == 'u') u_count++;
-				read++;
-			}
-
-			// replace with more frequent letter
-			*write = (i_count >= u_count) ? 'i' : 'u';
-			write++;
-
-		} else {
-			// simply copy all other chars
-			*write++ = *read++;
-		}
-	}
-
-	size_t affected_len = read - matching_plain; // length until '\0'
-	size_t remaining_len = plain2_len - affected_len - 1;
-
-	// memcpy vom nicht-beeinträchtigten Teil
-	memcpy(write, read + 1, remaining_len);
-	write += remaining_len;
-
-	// Optional: End-Nullterminierung, falls du es als C-String verwenden willst
-	*write = '\0';
 
 	printf("%s\n", matching_plain);
 
