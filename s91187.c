@@ -219,6 +219,79 @@ void print_hex(const unsigned char *buf, int len)
 	printf("\n");
 }
 
+unsigned* encrypt(EVP_CIPHER *cipher_type, unsigned char *plain, long plain_len,
+	unsigned char *key, unsigned char *iv, long *cipher_len)
+{
+	// allocate memory for cipher
+	unsigned char *cipher = malloc(plain_len);
+	if (!cipher) { perror("malloc failed for decrypt"); return NULL; }
+
+	// create and initialize context (stores the state of the encryption operation)
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+	if (!ctx) { printf("cannot create context\n"); free(cipher); return NULL; }
+
+	// initialize encryption operation
+	if (!EVP_EncryptInit_ex(ctx, cipher_type, NULL, key, iv)) {
+		printf("EVP_EncryptInit_ex failed\n");
+		EVP_CIPHER_CTX_free(ctx);
+		free(cipher);
+		return NULL;
+	}
+
+	// encrypt
+	int encrypted_len = 0; // will store number of bytes written by EVP_EncryptUpdate
+	if (!EVP_EncryptUpdate(ctx, cipher, &encrypted_len, plain, plain_len)) {
+		printf("EVP_EncryptUpdate failed\n");
+		EVP_CIPHER_CTX_free(ctx);
+		free(cipher);
+		return 1;
+	}
+
+	// finalize encryption
+	int final_len = 0; // will store number of bytes written by EVP
+	if (!EVP_EncryptFinal_ex(ctx, cipher + encrypted_len, &final_len)) {
+		printf("EVP_EncryptFinal_ex failed\n");
+		EVP_CIPHER_CTX_free(ctx);
+		free(cipher);
+		return 1;
+	}
+
+	// total plaintext length (must sum bytes written by Update + Final because padding may change length)
+	*cipher_len = encrypted_len + final_len;
+
+	// return pointer to decrypted cleaned plain
+	return cipher;
+}
+
+unsigned char *generate_iv(int iv_len) 
+{
+	unsigned char *iv = malloc(iv_len);
+	if (!iv) {
+		perror("malloc failed for encrypt_iv\n");
+		return NULL;
+	}
+
+	if (RAND_bytes(iv, iv_len) != 1) {
+		printf("cannot randomly generate iv for encryption\n");
+		free(iv);
+		return NULL;
+	}
+
+	return iv;
+}
+
+int write_file(const char *out_filepath, const unsigned char *data, int data_len)
+{
+	FILE *of = fopen(out_filepath, "wb");
+	if (!of) { perror("output file"); return 1; }
+
+	int written = fwrite(data, 1, data_len, of);
+	if (written != data_len) { perror("write error"); fclose(of); return 1; }
+
+	fclose(of);
+	return 0;
+}
+
 // only free memory you own - if the caller allocated memory, don't free it inside your called function
 // otherwise you risk double-free or freeing memory you don't own
 
@@ -336,10 +409,10 @@ int main()
 	//------------------------------------------------------------------ //
 
 	// c1_file and c2_file pointer should now be directly after IV
-	print_hex(iv1, decrypt_iv_len);
-	print_hex(iv2, decrypt_iv_len);
-	// if (check_file_pointer(c1_file, "c1_file", iv_len)) return 1;
-	// if (check_file_pointer(c2_file, "c2_file", iv_len)) return 1;
+	// print_hex(iv1, decrypt_iv_len);
+	// print_hex(iv2, decrypt_iv_len);
+	// if (check_file_pointer(c1_file, "c1_file", iv_len)) { ret = 1; goto cleanup; }
+	// if (check_file_pointer(c2_file, "c2_file", iv_len)) { ret = 1; goto cleanup; };
 
 	//-- Decrypt ------------------------------------------------------- //
 	long plain1_len;
@@ -352,11 +425,7 @@ int main()
 	unsigned char *c2 = read_file(c2_file, decrypt_iv_len, &c2_len);
 	unsigned char *plain2 = decrypt(aes_type, c2, c2_len, k1, iv2, &plain2_len);
 
-	if (!plain1 || !plain2) {
-		printf("Decryption failed\n");
-		ret = 1;
-		goto cleanup;
-	}
+	if (!plain1 || !plain2) { printf("Decryption failed\n"); ret = 1; goto cleanup; }
 	//------------------------------------------------------------------ //
 
 	// printf("Decrypted c1_file:\n%s\n", plain1);
@@ -369,11 +438,7 @@ int main()
 	unsigned char *hash1 = compute_digest(sha224_type, plain1, plain1_len, hash_len);
 	unsigned char *hash2 = compute_digest(sha224_type, plain2, plain2_len, hash_len);
 
-	if (!hash1 || !hash2) {
-		printf("SHA224 computation failed\n");
-		ret = 1;
-		goto cleanup;
-	}
+	if (!hash1 || !hash2) { printf("SHA224 computation failed\n"); ret = 1; goto cleanup; }
 	//------------------------------------------------------------------ //
 	
 	// printf("SHA-224 plain1:\n");
@@ -385,11 +450,7 @@ int main()
 	//-- Compare Hashes ------------------------------------------------ //
 	long hash_size;	// filled by read_file
 	unsigned char *expected_hash = read_file(expected_hash_file, 0, &hash_size);
-	if (!expected_hash) { 
-		printf("cannot read expected hash\n");
-		ret = 1;
-		goto cleanup;
-	}
+	if (!expected_hash) { printf("cannot read expected hash\n"); ret = 1; goto cleanup; }
 
 	// print_hex(buffer, outlen);
 
@@ -401,11 +462,7 @@ int main()
 		expected_hash, hash_len,
 		&to_free, &matching_plain_len
 	);
-	if (!matching_plain) {
-		printf("No matching plaintext found\n");
-		ret = 1;
-		goto cleanup;
-	}
+	if (!matching_plain) { printf("No matching plaintext found\n"); ret = 1; goto cleanup; }
 
 	// free the non-matching plaintext
 	if (to_free) free(to_free);
@@ -415,7 +472,7 @@ int main()
 	clean_up_text(matching_plain, matching_plain_len);
 	//------------------------------------------------------------------ //
 
-	printf("%s\n", matching_plain);
+	// printf("%s\n", matching_plain);
 
 	//-- Encrypt ------------------------------------------------------- //
 	const EVP_CIPHER *sm4_ctr_type = EVP_sm4_ctr();
@@ -425,71 +482,31 @@ int main()
 
 	// iv notwendig: https://chatgpt.com/c/695aac5e-bcd0-8327-bf1a-38a143d039c2
 	// (pseudo)zufällig erzeugen
-	unsigned char *encrypt_iv = malloc(encrypt_iv_len);
-	if (!encrypt_iv) {
-		perror("malloc failed for encrypt_iv\n");
-		return 1;
-	}
+	unsigned char *encrypt_iv = generate_iv(encrypt_iv_len);
+	if (!encrypt_iv) { printf("encryption iv could not be generated\n"); ret = 1; goto cleanup; }
 
-	if (RAND_bytes(encrypt_iv, encrypt_iv_len) != 1) {
-		printf("cannot generate iv for encryption\n");
-		return 1;
-	}
-
-	// allocate memory for cipher
-	unsigned char *cipher = malloc(matching_plain_len);
-	if (!cipher) { perror("malloc failed for decrypt"); return NULL; }
-
-	// create and initialize context (stores the state of the encryption operation)
-	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-	if (!ctx) { printf("cannot create context\n"); free(cipher); return NULL; }
-
-	// initialize encryption operation
-	if (!EVP_EncryptInit_ex(ctx, sm4_ctr_type, NULL, k2, encrypt_iv)) {
-		printf("EVP_EncryptInit_ex failed\n");
-		EVP_CIPHER_CTX_free(ctx);
-		free(cipher);
-		return 1;
-	}
-
-	// encrypt
-	int encrypted_len = 0; // will store number of bytes written by EVP_EncryptUpdate
-	if (!EVP_EncryptUpdate(ctx, cipher, &encrypted_len, matching_plain, matching_plain_len)) {
-		printf("EVP_EncryptUpdate failed\n");
-		EVP_CIPHER_CTX_free(ctx);
-		free(cipher);
-		return 1;
-	}
-
-	// finalize encryption
-	int final_len = 0; // will store number of bytes written by EVP
-	if (!EVP_EncryptFinal_ex(ctx, cipher + encrypted_len, &final_len)) {
-		printf("EVP_EncryptFinal_ex failed\n");
-		EVP_CIPHER_CTX_free(ctx);
-		free(cipher);
-		return 1;
-	}
-
-	long *cipher_len = encrypted_len + final_len;
+	long final_cipher_len;
+	unsigned char *final_cipher = encrypt(sm4_ctr_type, matching_plain, matching_plain_len, 
+											k2, encrypt_iv, &final_cipher_len);
+	
 	//------------------------------------------------------------------ //
 
-	//-- IV + Chiffrat speichern --------------------------------------- //
-	FILE *of = fopen(OUT_FILE, "wb");
-	if (!of) {
-		perror("output file");
-		return 1;
-	}
+	//-- Store IV and Cipher in File ----------------------------------- //
+	int total_len = encrypt_iv_len + final_cipher_len;
+	unsigned char *final_data = malloc(total_len);
+	if (!final_data) { perror("malloc failed for final_data"); ret = 1; goto cleanup; }
 
-	fwrite(encrypt_iv, 1, encrypt_iv_len, of);
-	fwrite(cipher, 1, cipher_len, of);
-	fclose(of);
+	memcpy(final_data, encrypt_iv, encrypt_iv_len);
+	memcpy(final_data + encrypt_iv_len, final_cipher, final_cipher_len);
+
+	if (write_file(OUT_FILE, final_data, total_len)) { perror("write failed"); ret = 1; goto cleanup; };
+	//------------------------------------------------------------------ //
 
 	printf("Verschlüsselung erfolgreich\n");
 	printf("IV (%zu Byte) + Chiffrat (%d Byte) in %s gespeichert\n",
-			encrypt_iv_len, cipher_len, OUT_FILE);
-	//------------------------------------------------------------------ //
-	
+			encrypt_iv_len, final_cipher_len, OUT_FILE);
 
+	//-- Cleanup  ------------------------------------------------------ //
 cleanup:
 	if (k1) free(k1);
     if (k2) free(k2);
@@ -506,6 +523,8 @@ cleanup:
     if (c2_file) fclose(c2_file);
     if (expected_hash_file) fclose(expected_hash_file);
 	if (encrypt_iv) free(encrypt_iv);
+	if (final_data) free(final_data);
+	//------------------------------------------------------------------ //
 
 	return ret;
 }
