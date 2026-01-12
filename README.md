@@ -1,6 +1,6 @@
 # is-crypto-openssl
 
-This C program (`s9118.c`) solves the exam task for processing and encrypting given binary files using OpenSSL.  
+This C program (`s91187.c`) solves the exam task for processing and encrypting given binary files using OpenSSL.  
 It operates entirely in memory and does not read intermediate results from files.
 
 The processing includes the following steps:
