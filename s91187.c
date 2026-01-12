@@ -1,11 +1,24 @@
 /*
- * compile and run with:
+ * s91187.c
+ * 
+ * This program demonstrates a complete cryptographic processing pipeline usign OpenSSL:
+ * - Decryption of two AES-192-CBC encrypted ciphertexts
+ * - Hashing of the resulting plaintexts with SHA-224
+ * - Selection of the plaintext matching a given reference hash
+ * - Post-processing of the selected plaintext
+ * - Re-encryption using SM4 in CTR mode with a freshly generated IV
+ * 
+ * The final output consists of the generated IV followed by the ciphertext,
+ * written to a binary output file.
+ * 
+ * build and run with:
  *	make
  *	make run
  */
 #include <stdio.h>
 #include <string.h>
 #include <openssl/evp.h>
+#include <openssl/rand.h>
 
 // TODO: mit define arbeiten für Dateinamen
 #define OUT_FILE    "s91187-result.bin"
@@ -94,8 +107,8 @@ unsigned char* read_file(FILE *file, size_t offset, size_t *data_size)
 {
 	// position file pointer and determine file size
 	fseek(file, 0, SEEK_END);
-	size_t filesize = ftell(file);
-	if (filesize <= 0 || offset < 0 || offset > filesize) {
+	long filesize = ftell(file);
+	if (filesize <= 0 || offset > (size_t)filesize) {
 		printf("invalid file parameters: filesize=%ld, offset=%ld\n", filesize, offset);
 		return NULL;
 	}
@@ -119,11 +132,12 @@ unsigned char* read_file(FILE *file, size_t offset, size_t *data_size)
 	return txt;
 }
 
-unsigned char* decrypt(EVP_CIPHER *cipher_type, unsigned char *ciphertext, size_t cipher_len, 
-	unsigned char *key, unsigned char *iv, size_t *plaintext_len) 
+unsigned char* decrypt(const EVP_CIPHER *cipher_type, unsigned char *ciphertext, size_t cipher_len, 
+	const unsigned char *key, const unsigned char *iv, size_t *plaintext_len) 
 {
 	// allocate memory for plaintext
-	unsigned char *plain = malloc(cipher_len);
+	int block_size = EVP_CIPHER_block_size(cipher_type);
+	unsigned char *plain = malloc(cipher_len + block_size);
 	if (!plain) { perror("malloc failed for decrypt"); return NULL; }
 
 	// create and initialize context (stores the state of the decryption operation)
@@ -166,11 +180,11 @@ unsigned char* decrypt(EVP_CIPHER *cipher_type, unsigned char *ciphertext, size_
 	return plain;
 }
 
-unsigned char *compute_digest(EVP_MD *hash_type, const unsigned char *data, size_t len, size_t hash_len) 
+unsigned char *compute_digest(const EVP_MD *hash_type, const unsigned char *data, size_t len, size_t hash_len) 
 {
 	// allocate memory for digest/hash
 	unsigned char *digest = malloc(hash_len);
-	if (!digest) { perror("malloc failed for digest"); free(digest); return NULL; }
+	if (!digest) { perror("malloc failed for digest"); return NULL; }
 
 	// create and initialize context (stores the state of the hash operation)
 	EVP_MD_CTX *ctx = EVP_MD_CTX_new();
@@ -189,7 +203,7 @@ unsigned char *compute_digest(EVP_MD *hash_type, const unsigned char *data, size
 	}
 
 	// hash
-	int digest_len = 0; // will store number of bytes written by EVP_DigestUpdate
+	unsigned int digest_len = 0; // will store number of bytes written by EVP_DigestUpdate
 	if (!EVP_DigestUpdate(ctx, data, len)) {
 		printf("EVP_DigestUpdate failed\n");
 		EVP_MD_CTX_free(ctx);
@@ -205,6 +219,14 @@ unsigned char *compute_digest(EVP_MD *hash_type, const unsigned char *data, size
 		return NULL;
 	}
 
+	if (digest_len != hash_len) {
+		printf("Digest length mismatch: expected %zu bytes, got %u bytes\n", hash_len, digest_len);
+		EVP_MD_CTX_free(ctx);
+		free(digest);
+		return NULL;
+	}
+
+
 	// cleanup
 	EVP_MD_CTX_free(ctx);
 
@@ -219,11 +241,12 @@ void print_hex(const unsigned char *buf, size_t len)
 	printf("\n");
 }
 
-unsigned* encrypt(EVP_CIPHER *cipher_type, unsigned char *plain, size_t plain_len,
-	unsigned char *key, unsigned char *iv, size_t *cipher_len)
+unsigned char* encrypt(const EVP_CIPHER *cipher_type, unsigned char *plain, size_t plain_len,
+	const unsigned char *key, const unsigned char *iv, size_t *cipher_len)
 {
 	// allocate memory for cipher
-	unsigned char *cipher = malloc(plain_len);
+	int block_size = EVP_CIPHER_block_size(cipher_type);
+	unsigned char *cipher = malloc(plain_len + block_size);
 	if (!cipher) { perror("malloc failed for decrypt"); return NULL; }
 
 	// create and initialize context (stores the state of the encryption operation)
@@ -258,6 +281,8 @@ unsigned* encrypt(EVP_CIPHER *cipher_type, unsigned char *plain, size_t plain_le
 
 	// total plaintext length (must sum bytes written by Update + Final because padding may change length)
 	*cipher_len = (size_t)encrypted_len + (size_t)final_len;
+
+	EVP_CIPHER_CTX_free(ctx);
 
 	// return pointer to decrypted cleaned plain
 	return cipher;
@@ -356,13 +381,6 @@ void clean_up_text(unsigned char *plain, size_t plain_len) {
 	*write = '\0';
 }
 
-// TODO: readme anpassen! (jetzt Entwicklung unter Linux nicht Windows!!!)
-// + Aufgabenstellung umschrieben mit reinbringen
-
-// TODOS:
-// (Done) 1. Bisher existierenden Code ausbessern
-// 2. mit (3) und (4) von Aufgabenstellung weiter
-// 3. Fehler-/Warnungen bei Kompilierung beheben
 // ueber Methoden Aufgabenerfuellung schreiben oder in Dok Comments oder Readme?
 
 int main()
@@ -388,6 +406,13 @@ int main()
 	size_t decrypt_iv_len = EVP_CIPHER_iv_length(aes_type);
 	//------------------------------------------------------------------ //
 
+	//-- Get Information about Encrypt-Function ------------------------ //
+	const EVP_CIPHER *sm4_ctr_type = EVP_sm4_ctr();
+
+	size_t encrypt_key_len = EVP_CIPHER_key_length(sm4_ctr_type);
+	size_t encrypt_iv_len = EVP_CIPHER_iv_length(sm4_ctr_type);
+	//------------------------------------------------------------------ //
+
 	// printf("Key (%d Bytes) and IV (%d Bytes) for AES-192-CBC.\n", key_len, iv_len);
 
 	//-- Get Keys ------------------------------------------------------- //
@@ -395,8 +420,8 @@ int main()
 	unsigned char *k1 = read_key(k1_filepath, decrypt_key_len);
 	if (!k1) { perror(k1_filepath); ret = 1; goto cleanup; }
 
-	const char *k2_filepath = "./data/s91187-key1.bin";
-	unsigned char *k2 = read_key(k2_filepath, decrypt_key_len);
+	const char *k2_filepath = "./data/s91187-key2.bin";
+	unsigned char *k2 = read_key(k2_filepath, encrypt_key_len);
 	if (!k2) { perror(k2_filepath); ret = 1; goto cleanup; }
 	//------------------------------------------------------------------ //
 
@@ -404,13 +429,13 @@ int main()
 	unsigned char *iv1 = read_iv(c1_file, decrypt_iv_len);
 	if (!iv1) { ret = 1; goto cleanup; }
 
-	unsigned char *iv2 = read_iv(c2_file, decrypt_iv_len);
+	unsigned char *iv2 = read_iv(c2_file, encrypt_iv_len);
 	if (!iv2) { ret = 1; goto cleanup; }
 	//------------------------------------------------------------------ //
 
 	// c1_file and c2_file pointer should now be directly after IV
-	// print_hex(iv1, decrypt_iv_len);
-	// print_hex(iv2, decrypt_iv_len);
+	print_hex(iv1, decrypt_iv_len);
+	print_hex(iv2, encrypt_iv_len);
 	// if (check_file_pointer(c1_file, "c1_file", iv_len)) { ret = 1; goto cleanup; }
 	// if (check_file_pointer(c2_file, "c2_file", iv_len)) { ret = 1; goto cleanup; };
 
@@ -475,11 +500,6 @@ int main()
 	// printf("%s\n", matching_plain);
 
 	//-- Encrypt ------------------------------------------------------- //
-	const EVP_CIPHER *sm4_ctr_type = EVP_sm4_ctr();
-
-	size_t encrypt_key_len = EVP_CIPHER_key_length(sm4_ctr_type);
-	size_t encrypt_iv_len = EVP_CIPHER_iv_length(sm4_ctr_type);
-
 	// iv notwendig: https://chatgpt.com/c/695aac5e-bcd0-8327-bf1a-38a143d039c2
 	// (pseudo)zufällig erzeugen
 	unsigned char *encrypt_iv = generate_iv(encrypt_iv_len);
@@ -503,7 +523,7 @@ int main()
 	//------------------------------------------------------------------ //
 
 	printf("Verschlüsselung erfolgreich\n");
-	printf("IV (%zu Byte) + Chiffrat (%d Byte) in %s gespeichert\n",
+	printf("IV (%zu Byte) + Chiffrat (%zu Byte) in %s gespeichert\n",
 			encrypt_iv_len, final_cipher_len, OUT_FILE);
 
 	//-- Cleanup  ------------------------------------------------------ //
@@ -514,8 +534,8 @@ cleanup:
     if (iv2) free(iv2);
     if (c1) free(c1);
     if (c2) free(c2);
-    if (plain1 && plain1 == matching_plain) free(plain1);
-    if (plain2 && plain2 == matching_plain) free(plain2);
+    if (plain1 && (plain1 == matching_plain || !matching_plain)) free(plain1);
+    if (plain2 && (plain2 == matching_plain || !matching_plain)) free(plain2);
     if (hash1) free(hash1);
     if (hash2) free(hash2);
     if (expected_hash) free(expected_hash);
@@ -524,6 +544,7 @@ cleanup:
     if (expected_hash_file) fclose(expected_hash_file);
 	if (encrypt_iv) free(encrypt_iv);
 	if (final_data) free(final_data);
+	if (final_cipher) free(final_cipher);
 	//------------------------------------------------------------------ //
 
 	return ret;
