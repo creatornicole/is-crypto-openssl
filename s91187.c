@@ -20,10 +20,14 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
-// TODO: mit define arbeiten für Dateinamen
-#define OUT_FILE    "s91187-result.bin"
+#define DATA_PATH "./data/"
+#define OUT_FILE "s91187-result.bin"
+#define CIPHER_1_FILE "s91187-cipher1.bin"
+#define CIPHER_2_FILE "s91187-cipher2.bin"
+#define HASH_FILE "s91187-dgst.bin"
+#define KEY_1_FILE "s91187-key1.bin"
+#define KEY_2_FILE "s91187-key2.bin"
 
-//-- Helper Functions ---------------------------------------------- //
 unsigned char* read_key(const char *filepath, size_t key_len)
 {
 	// open file
@@ -188,11 +192,7 @@ unsigned char *compute_digest(const EVP_MD *hash_type, const unsigned char *data
 
 	// create and initialize context (stores the state of the hash operation)
 	EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-	if (!ctx) { 
-		printf("cannot create context\n");
-		free(digest);
-		return NULL;
-	}
+	if (!ctx) { printf("cannot create context\n"); free(digest); return NULL; }
 
 	// initialize the hash operation
 	if (!EVP_DigestInit_ex(ctx, hash_type, NULL)) {
@@ -232,13 +232,6 @@ unsigned char *compute_digest(const EVP_MD *hash_type, const unsigned char *data
 
 	// return pointer to hash
 	return digest;
-}
-
-void print_hex(const unsigned char *buf, size_t len)
-{
-	for (size_t i = 0; i < len; i++)
-		printf("%02x", buf[i]);
-	printf("\n");
 }
 
 unsigned char* encrypt(const EVP_CIPHER *cipher_type, unsigned char *plain, size_t plain_len,
@@ -344,25 +337,27 @@ unsigned char* pick_matching_plaintext(
 	}
 }
 
-// beeintraechtigter Text bis Nullzeichen \0
-// matching_plain: [beeinträchtigt][\0][nicht beeinträchtigt]
-void clean_up_text(unsigned char *plain, size_t plain_len) {
-	unsigned char *read = plain; // zeigt auf das aktuelle Zeichen zum Lesen
-	unsigned char *write = plain; // zeigt auf die Position, wo das nächste Zeichen im angepassten Text stehen soll
+// Impaired text up to the null terminator '\0'
+// matching_plain: [impaired][\0][unimpaired]
+void clean_up_text(unsigned char *plain, size_t plain_len)
+{
+	unsigned char *read = plain; // points to the current character to read
+	unsigned char *write = plain; // points to where the next character in the cleaned text should go
 
-	while (*read != '\0') {
+	// read - plain < plain_len ensures we never read beyond plain_len, whether or not '\0' is present
+	while (*read != '\0' && read - plain < plain_len) {
 		if (*read == 'i' || *read == 'u') {
 			int i_count = 0;
 			int u_count = 0;
 
-			// count i and u
+			// count consecutive i's and u's
 			while (*read == 'i' || *read == 'u') {
 				if (*read == 'i') i_count++;
 				if (*read == 'u') u_count++;
 				read++;
 			}
 
-			// replace with more frequent letter
+			// replace with the more frequent letter
 			*write = (i_count >= u_count) ? 'i' : 'u';
 			write++;
 		} else {
@@ -371,35 +366,34 @@ void clean_up_text(unsigned char *plain, size_t plain_len) {
 		}
 	}
 
-	size_t affected_len = read - plain; // length until '\0'
-	size_t remaining_len = plain_len - affected_len -1;
+	if (read - plain < plain_len) {
+		*write++ = *read++; // copy \0
+	}
 
-	// memcpy vom nicht-beeinträchtigten Teil
-	memcpy(write, read + 1, remaining_len);
-	write += remaining_len;
+	// copy the rest of the text (unimpaired text)
+	size_t remaining_len = plain_len - (read - plain);
 
-	*write = '\0';
+	if (remaining_len > 0) {
+		memcpy(write, read, remaining_len);
+	}
 }
-
-// ueber Methoden Aufgabenerfuellung schreiben oder in Dok Comments oder Readme?
 
 int main()
 {
 	int ret = 0; // in case of success 0 should be returned
 
 	//-- Open Files ---------------------------------------------------- //
-	FILE *c1_file = open_file("./data/s91187-cipher1.bin");
+	FILE *c1_file = open_file(DATA_PATH CIPHER_1_FILE);
 	if (!c1_file) return 1;
 
-	FILE *c2_file = open_file("./data/s91187-cipher2.bin");
+	FILE *c2_file = open_file(DATA_PATH CIPHER_2_FILE);
 	if (!c2_file) return 1;
 
-	FILE *expected_hash_file = open_file("./data/s91187-dgst.bin");
+	FILE *expected_hash_file = open_file(DATA_PATH HASH_FILE);
 	if (!expected_hash_file) return 1;
 	//------------------------------------------------------------------ //
 
 	//-- Get Information about Decrypt-Function ------------------------ //
-	// EVP_aes_192_abc contains information about decrypt-function including key and iv length
 	const EVP_CIPHER *aes_type = EVP_aes_192_cbc();
 
 	size_t decrypt_key_len = EVP_CIPHER_key_length(aes_type);
@@ -413,14 +407,12 @@ int main()
 	size_t encrypt_iv_len = EVP_CIPHER_iv_length(sm4_ctr_type);
 	//------------------------------------------------------------------ //
 
-	// printf("Key (%d Bytes) and IV (%d Bytes) for AES-192-CBC.\n", key_len, iv_len);
-
 	//-- Get Keys ------------------------------------------------------- //
-	const char *k1_filepath = "./data/s91187-key1.bin";
+	const char *k1_filepath = DATA_PATH KEY_1_FILE;
 	unsigned char *k1 = read_key(k1_filepath, decrypt_key_len);
 	if (!k1) { perror(k1_filepath); ret = 1; goto cleanup; }
 
-	const char *k2_filepath = "./data/s91187-key2.bin";
+	const char *k2_filepath = DATA_PATH KEY_2_FILE;
 	unsigned char *k2 = read_key(k2_filepath, encrypt_key_len);
 	if (!k2) { perror(k2_filepath); ret = 1; goto cleanup; }
 	//------------------------------------------------------------------ //
@@ -429,13 +421,11 @@ int main()
 	unsigned char *iv1 = read_iv(c1_file, decrypt_iv_len);
 	if (!iv1) { ret = 1; goto cleanup; }
 
-	unsigned char *iv2 = read_iv(c2_file, encrypt_iv_len);
+	unsigned char *iv2 = read_iv(c2_file, decrypt_iv_len);
 	if (!iv2) { ret = 1; goto cleanup; }
 	//------------------------------------------------------------------ //
 
 	// c1_file and c2_file pointer should now be directly after IV
-	print_hex(iv1, decrypt_iv_len);
-	print_hex(iv2, encrypt_iv_len);
 	// if (check_file_pointer(c1_file, "c1_file", iv_len)) { ret = 1; goto cleanup; }
 	// if (check_file_pointer(c2_file, "c2_file", iv_len)) { ret = 1; goto cleanup; };
 
@@ -453,9 +443,6 @@ int main()
 	if (!plain1 || !plain2) { printf("Decryption failed\n"); ret = 1; goto cleanup; }
 	//------------------------------------------------------------------ //
 
-	// printf("Decrypted c1_file:\n%s\n", plain1);
-	// printf("Decrypted c2_file:\n%s\n", plain2);
-
 	//-- Hash ---------------------------------------------------------- //
 	const EVP_MD *sha224_type = EVP_sha224();
 	size_t hash_len = EVP_MD_size(sha224_type);
@@ -465,19 +452,11 @@ int main()
 
 	if (!hash1 || !hash2) { printf("SHA224 computation failed\n"); ret = 1; goto cleanup; }
 	//------------------------------------------------------------------ //
-	
-	// printf("SHA-224 plain1:\n");
-	// print_hex(hash1, hash_len);
-
-	// printf("SHA-224 plain2:\n");
-	// print_hex(hash2, hash_len);
 
 	//-- Compare Hashes ------------------------------------------------ //
 	size_t hash_size;	// filled by read_file
 	unsigned char *expected_hash = read_file(expected_hash_file, 0, &hash_size);
 	if (!expected_hash) { printf("cannot read expected hash\n"); ret = 1; goto cleanup; }
-
-	// print_hex(buffer, outlen);
 
 	unsigned char *to_free = NULL;
 	size_t matching_plain_len;
@@ -497,18 +476,17 @@ int main()
 	clean_up_text(matching_plain, matching_plain_len);
 	//------------------------------------------------------------------ //
 
-	// printf("%s\n", matching_plain);
-
 	//-- Encrypt ------------------------------------------------------- //
-	// iv notwendig: https://chatgpt.com/c/695aac5e-bcd0-8327-bf1a-38a143d039c2
-	// (pseudo)zufällig erzeugen
+	// IV is required for the SM4-CTR: CTR mode turn the block cipher into a stream cipher;
+	// the IV serves as the starting value for the counter. This ensures that each encryiption
+	// with the same key produces a unique keystream
+	// generate it (pseudo)randomly for security
 	unsigned char *encrypt_iv = generate_iv(encrypt_iv_len);
 	if (!encrypt_iv) { printf("encryption iv could not be generated\n"); ret = 1; goto cleanup; }
 
 	size_t final_cipher_len;
 	unsigned char *final_cipher = encrypt(sm4_ctr_type, matching_plain, matching_plain_len, 
 											k2, encrypt_iv, &final_cipher_len);
-	
 	//------------------------------------------------------------------ //
 
 	//-- Store IV and Cipher in File ----------------------------------- //
@@ -516,14 +494,14 @@ int main()
 	unsigned char *final_data = malloc(total_len);
 	if (!final_data) { perror("malloc failed for final_data"); ret = 1; goto cleanup; }
 
+	// concatenate IV and ciphertext sequentially into final_data for file output
 	memcpy(final_data, encrypt_iv, encrypt_iv_len);
 	memcpy(final_data + encrypt_iv_len, final_cipher, final_cipher_len);
 
 	if (write_file(OUT_FILE, final_data, total_len)) { perror("write failed"); ret = 1; goto cleanup; };
 	//------------------------------------------------------------------ //
-
-	printf("Verschlüsselung erfolgreich\n");
-	printf("IV (%zu Byte) + Chiffrat (%zu Byte) in %s gespeichert\n",
+	
+	printf("IV (%zu bytes) + ciphertext (%zu bytes) saved in %s\n",
 			encrypt_iv_len, final_cipher_len, OUT_FILE);
 
 	//-- Cleanup  ------------------------------------------------------ //

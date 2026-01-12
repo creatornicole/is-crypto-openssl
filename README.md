@@ -1,56 +1,30 @@
 # is-crypto-openssl
 
-## Requirements (Windows)
+This C program (`s9118.c`) solves the exam task for processing and encrypting given binary files using OpenSSL.  
+It operates entirely in memory and does not read intermediate results from files.
 
-- C compiler, such as [MinGW](https://sourceforge.net/projects/mingw/)
-- (Optional) `make`utility (provided by MinGW or MSYS2) if using a Makefile
-- make sure the compiler (`gcc`) is added to your system PATH (see: [Installing MinGW Tools for C/C++ and Changing Environment Variables](https://www.geeksforgeeks.org/cpp/installing-mingw-tools-for-c-c-and-changing-environment-variable/))
-- [`openssl`](https://slproweb.com/products/Win32OpenSSL.html)
-- IDE such as VS Code (VSC)
+The processing includes the following steps:
 
-**Hint:**  
-If VSC shows the error `#include errors detected. Please update your includePath.` for OpenSSL headers, you can fix it by editing your `.vscode/c_cpp_properties.json` file:
-1. Open `.vscode/c_cpp_properties.json`
-2. Locate the `"includePath"`array inside your configuration
-3. Add the parent folder of `openssl`, not the `openssl`folder itself. For example:
-```json
-"includePath": [
-    "${workspaceFolder}/**",
-    "path/to/openssl/OpenSSL-Win64/include"
-]
-```
-This ensures that IntelliSense can correctly resolve lines like:
-```c
-#include <openssl/evp.h>
-```
+1. Decryption
+    - The files `s91187-cipher1.bin` and `s91187-cipher2.bin` are decrypted using AES-192-CBC.
+    - The key is read from `s911878-key1.bin`
+    - Initialization vectors (IVs) are extracted directly from the files, as they are stored at the beginning of the ciphertext.
+2. Hash verification
+    - The decrypted plaintexts are hashed using SHA-224.
+    - Only the plaintext whose hash matches the expected hash in `s91187-dgst.bin` is further processed; the other is discarded
+3. Cleaning up impaired text
+    - The beginning of the plaintext contains a section affected by sticky keys (`u`/`i`).
+    - The program removes extra `u` or `i` characters based on majority vote, leaving the rest of the plaintext unchanged.
+    - Result: cleaned data = [cleaned text][\0][unaltered text]
+4. Encryption of cleaned data
+    - The cleaned data is encrypted using SM4-CTR.
+    - The key is taken from `s91187-key2.bin`.
+    - The initialization vector is generated pseudorandomly.
+    - Result: IV + ciphertext stored sequentially in `s91187-result.bin`.
 
----
+### Build and Execution
 
-## Compile and Run (Windows)
-
-### Option 1: Compile manually
 ```bash
-gcc filename.c -o filename
+make
+make run
 ```
-
-### Option 2: Use a Makefile
-```bash
-mingw32-make
-```
-
-### Run the executable
-```bash
-.\filename.exe
-```
-
----
-
-
-
-
----
-
-### Resources
-
-30.12.2025, [Setting Up C Development Environment](https://www.geeksforgeeks.org/c/setting-up-c-development-environment/)
-30.12.2025, [Installing MinGW Tools for C/C++ and Changing Environment Variables](https://www.geeksforgeeks.org/cpp/installing-mingw-tools-for-c-c-and-changing-environment-variable/)
