@@ -74,8 +74,10 @@ unsigned char *read_iv(FILE *cipher_file, size_t iv_len)
 		return NULL;
 	}
 
-	/* hint: the file pointer now points directly 
-		after the IV */
+	/* 
+	 * hint: the file pointer now points 
+	 * directly after the IV
+	 */
 	return iv;
 }
 
@@ -156,8 +158,10 @@ unsigned char *decrypt(const EVP_CIPHER *cipher_type,
 		return NULL; 
 	}
 
-	/* create and initialize context (stores the state of 
-		the decryption operation) */
+	/* 
+	 * create and initialize context 
+	 * (stores the state of the decryption operation) 
+	 */
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 	if (!ctx) { 
 		printf("cannot create context\n"); 
@@ -174,8 +178,8 @@ unsigned char *decrypt(const EVP_CIPHER *cipher_type,
 	}
 
 	/* decrypt */
-	int decrypted_len = 0; /* will store number of bytes written 
-								by EVP_DecryptUpdate */
+	/* will store number of bytes written by EVP_DecryptUpdate */
+	int decrypted_len = 0;
 	if (!EVP_DecryptUpdate(ctx, plain, &decrypted_len, ciphertext, 
 							cipher_len)) {
 		printf("EVP_DecryptUpdate failed\n");
@@ -184,10 +188,12 @@ unsigned char *decrypt(const EVP_CIPHER *cipher_type,
 		return NULL;
 	}
 
-	/* finalize decryption (handles any remaining bytes 
-		(e.g., due to padding in block ciphers)) */
-	int final_len = 0; /* will store number of bytes written by 
-							EVP_DecryptFinal_ex */
+	/* 
+	 * finalize decryption (handles any remaining bytes 
+	 * (e.g., due to padding in block ciphers)) 
+	 */
+	/* will store number of bytes written by EVP_DecryptFinal_ex */
+	int final_len = 0;
 	if (!EVP_DecryptFinal_ex(ctx, plain + decrypted_len, 
 								&final_len)) {
 		printf("EVP_DecryptFinal_ex failed\n");
@@ -196,8 +202,10 @@ unsigned char *decrypt(const EVP_CIPHER *cipher_type,
 		return NULL;
 	}
 
-	/* total plaintext length (must sum bytes written by Update
-		+ Final because padding may change length) */
+	/* 
+	 * total plaintext length (must sum bytes written by 
+	 * Update + Final because padding may change length)
+	 */
 	*plaintext_len = (size_t)decrypted_len + (size_t)final_len;
 	
 	/* cleanup */
@@ -217,7 +225,10 @@ unsigned char *compute_digest(const EVP_MD *hash_type,
 		return NULL; 
 	}
 
-	/* create and initialize context (stores the state of the hash operation) */
+	/* 
+	 * create and initialize context
+	 * (stores the state of the hash operation)
+	 */
 	EVP_MD_CTX *ctx = EVP_MD_CTX_new();
 	if (!ctx) { 
 		printf("cannot create context\n");
@@ -234,7 +245,8 @@ unsigned char *compute_digest(const EVP_MD *hash_type,
 	}
 
 	/* hash */
-	unsigned int digest_len = 0; /* will store number of bytes written by EVP_DigestUpdate */
+	/* will store number of bytes written by EVP_DigestUpdate */
+	unsigned int digest_len = 0;
 	if (!EVP_DigestUpdate(ctx, data, len)) {
 		printf("EVP_DigestUpdate failed\n");
 		EVP_MD_CTX_free(ctx);
@@ -251,13 +263,12 @@ unsigned char *compute_digest(const EVP_MD *hash_type,
 	}
 
 	if (digest_len != hash_len) {
-		printf("Digest length mismatch: expected %zu bytes, got %u bytes\n", 
-			hash_len, digest_len);
+		printf("Digest length mismatch: expected %zu bytes, "
+       		"got %u bytes\n", hash_len, digest_len);
 		EVP_MD_CTX_free(ctx);
 		free(digest);
 		return NULL;
 	}
-
 
 	/* cleanup */
 	EVP_MD_CTX_free(ctx);
@@ -278,8 +289,10 @@ unsigned char *encrypt(const EVP_CIPHER *cipher_type, unsigned char *plain,
 		return NULL; 
 	}
 
-	/* create and initialize context (stores the state of the 
-		encryption operation) */
+	/* 
+	 * create and initialize context
+	 * (stores the state of the encryption operation)
+	 */
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 	if (!ctx) { 
 		printf("cannot create context\n");
@@ -296,8 +309,8 @@ unsigned char *encrypt(const EVP_CIPHER *cipher_type, unsigned char *plain,
 	}
 
 	/* encrypt */
-	int encrypted_len = 0; /* will store number of bytes written 
-								by EVP_EncryptUpdate */
+	/* will store number of bytes written by EVP_EncryptUpdate */
+	int encrypted_len = 0; 
 	if (!EVP_EncryptUpdate(ctx, cipher, &encrypted_len, 
 							plain, plain_len)) {
 		printf("EVP_EncryptUpdate failed\n");
@@ -315,8 +328,10 @@ unsigned char *encrypt(const EVP_CIPHER *cipher_type, unsigned char *plain,
 		return NULL;
 	}
 
-	/* total plaintext length (must sum bytes written by Update 
-		+ Final because padding may change length) */
+	/* 
+	 * total plaintext length (must sum bytes written by 
+	 * Update + Final because padding may change length) 
+	 */
 	*cipher_len = (size_t)encrypted_len + (size_t)final_len;
 
 	EVP_CIPHER_CTX_free(ctx);
@@ -346,22 +361,33 @@ int write_file(const char *out_filepath, const unsigned char *data,
 	size_t data_len)
 {
 	FILE *of = fopen(out_filepath, "wb");
-	if (!of) { perror("output file"); return 1; }
+	if (!of) { 
+		perror("output file"); 
+		return 1; 
+	}
 
 	size_t written = fwrite(data, 1, data_len, of);
-	if (written != data_len) { perror("write error"); fclose(of); return 1; }
+	if (written != data_len) { 
+		perror("write error");
+		fclose(of); 
+		return 1;
+	}
 
 	fclose(of);
 	return 0;
 }
 
-/* only free memory you own - if the caller allocated memory, don't free 
-	it inside your called function */
-/* otherwise you risk double-free or freeing memory you don't own */
+/* 
+ * only free memory you own - if the caller allocated memory,
+ * don't free it inside your called function, otherwise you 
+ * risk double-free or freeing memory you don't own
+ */
 
-/* returns plaintext that matches the expected hash */
-/* also provides nont-matching plaintext via `to_free` so it can 
-	be freed outside */
+/* 
+ * returns plaintext that matches the expected hash;
+ * also provides nont-matching plaintext via `to_free`
+ * so it can be freed outside
+ */ 
 unsigned char *pick_matching_plaintext(
 	unsigned char *plain1, unsigned char *hash1, size_t plain1_len,
 	unsigned char *plain2, unsigned char *hash2, size_t plain2_len,
@@ -386,11 +412,17 @@ unsigned char *pick_matching_plaintext(
 
 /* Impaired text up to the null terminator '\0' */
 /* matching_plain: [impaired][\0][unimpaired] */
-void clean_up_text(unsigned char *plain, size_t plain_len)
+void clean_up_text(unsigned char *plain, 
+	size_t plain_len, 
+	size_t *total_len)
 {
-	unsigned char *read = plain; /* points to the current character to read */
-	unsigned char *write = plain; /* points to where the next character 
-										in the cleaned text should go */
+	/* points to the current character to read */
+	unsigned char *read = plain;
+	/* 
+	 * points to where the next character in the 
+	 * cleaned text should go 
+	 */
+	unsigned char *write = plain;
 
 	/* find end of impaired text */
 	size_t pos = 0;
@@ -401,6 +433,7 @@ void clean_up_text(unsigned char *plain, size_t plain_len)
 
 	read = plain; /* reset pointer */
 	size_t processed = 0;
+	size_t total = 0; /* count length of cleaned text */
 
 	while (processed < pos) {
 		if (*read == 'i' || *read == 'u') {
@@ -408,64 +441,76 @@ void clean_up_text(unsigned char *plain, size_t plain_len)
 			size_t u_count = 0;
 
 			/* count consecutive i's and u's */
-			while (processed < pos && (*read == 'i' || *read == 'u')) {
-				if (*read == 'i') i_count++;
-				else if (*read == 'u') u_count++;
+			while (processed < pos &&
+					((*read == 'i') || (*read == 'u'))) {
+				if (*read == 'i') 
+					i_count++;
+				else if (*read == 'u') 
+					u_count++;
 				read++;
 				processed++;
 			}
 
 			/* replace with the more frequent letter */
 			*write++ = (i_count >= u_count) ? 'i' : 'u';
+			total++;
 		} else {
 			/* simply copy all other characters */
 			*write++ = *read++;
 			processed++;
+			total++;
 		}
 	}
 	
 	/* write \0 at the end of the cleaned up text */
 	if (pos < plain_len) {
 		*write++ = '\0';
+		total++;
 	}
 
 	/* copy rest of unimpaired text without changing */
 	size_t remaining = plain_len - pos - 1;
 	if (remaining > 0) {
 		memmove(write, plain + pos + 1, remaining);
+		total += remaining;
 	}
+	
+	*total_len = total;
 }
 
 int main()
 {
 	int ret = 0; /* in case of success 0 should be returned */
 
-	/*-- Open Files ---------------------------------------------------- */
+	/*-- Open Files ---------*/
 	FILE *c1_file = open_file(DATA_PATH CIPHER_1_FILE);
-	if (!c1_file) return 1;
+	if (!c1_file)
+		return 1;
 
 	FILE *c2_file = open_file(DATA_PATH CIPHER_2_FILE);
-	if (!c2_file) return 1;
+	if (!c2_file) 
+		return 1;
 
 	FILE *expected_hash_file = open_file(DATA_PATH HASH_FILE);
-	if (!expected_hash_file) return 1;
-	/*------------------------------------------------------------------ */
+	if (!expected_hash_file) 
+		return 1;
+	/*-----------------------*/
 
-	/*-- Get Information about Decrypt-Function ------------------------ */
+	/*-- Get Information about Decrypt-Function --*/
 	const EVP_CIPHER *aes_type = EVP_aes_192_cbc();
 
 	size_t decrypt_key_len = EVP_CIPHER_key_length(aes_type);
 	size_t decrypt_iv_len = EVP_CIPHER_iv_length(aes_type);
-	/*------------------------------------------------------------------ */
+	/*-----------------------*/
 
-	/*-- Get Information about Encrypt-Function ------------------------ */
+	/*-- Get Information about Encrypt-Function --*/
 	const EVP_CIPHER *sm4_ctr_type = EVP_sm4_ctr();
 
 	size_t encrypt_key_len = EVP_CIPHER_key_length(sm4_ctr_type);
 	size_t encrypt_iv_len = EVP_CIPHER_iv_length(sm4_ctr_type);
-	/*------------------------------------------------------------------ */
+	/*-----------------------*/
 
-	/*-- Get Keys ------------------------------------------------------- */
+	/*-- Get Keys -----------*/
 	const char *k1_filepath = DATA_PATH KEY_1_FILE;
 	unsigned char *k1 = read_key(k1_filepath, decrypt_key_len);
 	if (!k1) { 
@@ -481,9 +526,9 @@ int main()
 		ret = 1; 
 		goto cleanup; 
 	}
-	/*------------------------------------------------------------------ */
+	/*-----------------------*/
 
-	/*-- Get IVs ------------------------------------------------------- */
+	/*-- Get IVs ------------*/
 	unsigned char *iv1 = read_iv(c1_file, decrypt_iv_len);
 	if (!iv1) { 
 		ret = 1;
@@ -495,59 +540,61 @@ int main()
 		ret = 1;
 		goto cleanup; 
 	}
-	/*------------------------------------------------------------------ */
+	/*-----------------------*/
 
 	/* c1_file and c2_file pointer should now be directly after IV */
-	/* if (check_file_pointer(c1_file, "c1_file", iv_len)) {
-		ret = 1; 
-		goto cleanup; 
-	} */
-	/*
-	if (check_file_pointer(c2_file, "c2_file", iv_len)) {
-		ret = 1; 
-		goto cleanup;
-	} */
+	/* 
+	 * if (check_file_pointer(c1_file, "c1_file", iv_len)) {
+	 * 	ret = 1; 
+	 *	goto cleanup; 
+	 * }
+	 *
+	 * if (check_file_pointer(c2_file, "c2_file", iv_len)) {
+	 *	ret = 1; 
+	 *	goto cleanup;
+	 * }
+	 */
 
-	/*-- Decrypt ------------------------------------------------------- */
+	/*-- Decrypt ------------*/
 	size_t plain1_len;
 	size_t c1_len;
 	unsigned char *c1 = read_file(c1_file, decrypt_iv_len, &c1_len);
-	unsigned char *plain1 = decrypt(aes_type, c1, c1_len, k1, iv1,
-									&plain1_len);
+	unsigned char *plain1 = 
+		decrypt(aes_type, c1, c1_len, k1, iv1, &plain1_len);
 
 	size_t plain2_len;
 	size_t c2_len;
 	unsigned char *c2 = read_file(c2_file, decrypt_iv_len, &c2_len);
-	unsigned char *plain2 = decrypt(aes_type, c2, c2_len, k1, iv2,
-									&plain2_len);
+	unsigned char *plain2 = 
+		decrypt(aes_type, c2, c2_len, k1, iv2, &plain2_len);
 
 	if (!plain1 || !plain2) { 
 		printf("Decryption failed\n");
 		ret = 1;
 		goto cleanup; 
 	}
-	/*------------------------------------------------------------------ */
+	/*-----------------------*/
 
-	/*-- Hash ---------------------------------------------------------- */
+	/*-- Hash ---------------*/
 	const EVP_MD *sha224_type = EVP_sha224();
 	size_t hash_len = EVP_MD_size(sha224_type);
 	
-	unsigned char *hash1 = compute_digest(sha224_type, plain1, 
-											plain1_len, hash_len);
-	unsigned char *hash2 = compute_digest(sha224_type, plain2,
-											plain2_len, hash_len);
+	unsigned char *hash1 = 
+		compute_digest(sha224_type, plain1, plain1_len, hash_len);
+	unsigned char *hash2 = 
+		compute_digest(sha224_type, plain2, plain2_len, hash_len);
 
 	if (!hash1 || !hash2) { 
 		printf("SHA224 computation failed\n");
 		ret = 1;
 		goto cleanup; 
 	}
-	/*------------------------------------------------------------------ */
+	/*-----------------------*/
 
-	/*-- Compare Hashes ------------------------------------------------ */
+	/*-- Compare Hashes -----*/
 	size_t hash_size;	/* filled by read_file */
-	unsigned char *expected_hash = read_file(expected_hash_file, 0, 
-												&hash_size);
+	unsigned char *expected_hash = 
+		read_file(expected_hash_file, 0, &hash_size);
 	if (!expected_hash) { 
 		printf("cannot read expected hash\n");
 		ret = 1; 
@@ -569,22 +616,26 @@ int main()
 	}
 
 	/* free the non-matching plaintext */
-	if (to_free) free(to_free);
-	/*------------------------------------------------------------------ */
+	if (to_free) 
+		free(to_free);
+	/*-----------------------*/
 
-	/*-- Clean Up Text ------------------------------------------------- */
-	clean_up_text(matching_plain, matching_plain_len);
-	/*------------------------------------------------------------------ */
+	/*-- Clean Up Text ------*/
+	size_t cleaned_len;
+	clean_up_text(matching_plain, matching_plain_len, &cleaned_len);
+	/*-----------------------*/
 
-	printf("Full cleaned-up data:\n");
-	fwrite(matching_plain, 1, matching_plain_len, stdout);
+	printf("Full cleaned-up plain data:\n");
+	fwrite(matching_plain, 1, cleaned_len, stdout);
 	printf("\n");
 
-	/*-- Encrypt ------------------------------------------------------- */
-	/* IV is required for the SM4-CTR: CTR mode turn the block cipher 
-		into a stream cipher; the IV serves as the starting value for
-		counter. This ensures that each encryiption with the same key
-		produces a unique keystream */
+	/*-- Encrypt -------------*/
+	/* 
+	 * IV is required for the SM4-CTR: CTR mode turn the block cipher 
+	 * into a stream cipher; the IV serves as the starting value for
+	 * counter. This ensures that each encryiption with the same key
+	 * produces a unique keystream
+	 */
 	/* generate it (pseudo)randomly for security */
 	unsigned char *encrypt_iv = generate_iv(encrypt_iv_len);
 	if (!encrypt_iv) {
@@ -593,12 +644,12 @@ int main()
 		goto cleanup; }
 
 	size_t final_cipher_len;
-	unsigned char *final_cipher = encrypt(sm4_ctr_type, matching_plain, 
-											matching_plain_len, k2, encrypt_iv,
-											&final_cipher_len);
-	/*------------------------------------------------------------------ */
+	unsigned char *final_cipher = 
+		encrypt(sm4_ctr_type, matching_plain, cleaned_len, k2, 
+				encrypt_iv, &final_cipher_len);
+	/*-----------------------*/
 
-	/*-- Store IV and Cipher in File ----------------------------------- */
+	/*-- Store IV and Cipher in File --*/
 	size_t total_len = encrypt_iv_len + final_cipher_len;
 	unsigned char *final_data = malloc(total_len);
 	if (!final_data) {
@@ -607,8 +658,10 @@ int main()
 		goto cleanup; 
 	}
 
-	/* concatenate IV and ciphertext sequentially into final_data 
-		for file output */
+	/* 
+	 * concatenate IV and ciphertext sequentially into 
+	 * final_data for file output 
+	 */
 	memcpy(final_data, encrypt_iv, encrypt_iv_len);
 	memcpy(final_data + encrypt_iv_len, final_cipher, final_cipher_len);
 
@@ -617,31 +670,46 @@ int main()
 		ret = 1;
 		goto cleanup; 
 	}
-	/*------------------------------------------------------------------ */
+	/*-----------------------*/
 	
 	printf("IV (%zu bytes) + ciphertext (%zu bytes) saved in %s\n",
 			encrypt_iv_len, final_cipher_len, OUT_FILE);
 
-	/*-- Cleanup  ------------------------------------------------------ */
+	/*-- Cleanup ------------*/
 cleanup:
-	if (k1) free(k1);
-    if (k2) free(k2);
-    if (iv1) free(iv1);
-    if (iv2) free(iv2);
-    if (c1) free(c1);
-    if (c2) free(c2);
-    if (plain1 && (plain1 == matching_plain || !matching_plain)) free(plain1);
-    if (plain2 && (plain2 == matching_plain || !matching_plain)) free(plain2);
-    if (hash1) free(hash1);
-    if (hash2) free(hash2);
-    if (expected_hash) free(expected_hash);
-    if (c1_file) fclose(c1_file);
-    if (c2_file) fclose(c2_file);
-    if (expected_hash_file) fclose(expected_hash_file);
-	if (encrypt_iv) free(encrypt_iv);
-	if (final_data) free(final_data);
-	if (final_cipher) free(final_cipher);
-	/*------------------------------------------------------------------ */
+	if (k1)
+		free(k1);
+	if (k2)
+		free(k2);
+	if (iv1)
+		free(iv1);
+    if (iv2)
+		free(iv2);
+    if (c1)
+		free(c1);
+	if (c2)
+		free(c2);
+    if (plain1 && (plain1 == matching_plain || !matching_plain))
+		free(plain1);
+    if (plain2 && (plain2 == matching_plain || !matching_plain))
+		free(plain2);
+	if (hash1)
+		free(hash1);
+	if (hash2)
+		free(hash2);
+	if (expected_hash)
+		free(expected_hash);
+    if (c1_file)
+		fclose(c1_file);
+	if (c2_file)
+		fclose(c2_file);
+	if (expected_hash_file)
+		fclose(expected_hash_file);
+	if (encrypt_iv)
+		free(encrypt_iv);
+	if (final_data)
+		free(final_data);
+	/*-----------------------*/
 
 	return ret;
 }
