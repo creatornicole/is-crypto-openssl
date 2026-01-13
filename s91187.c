@@ -116,7 +116,7 @@ unsigned char *read_file(FILE *file, size_t offset, size_t *data_size)
 	fseek(file, 0, SEEK_END);
 	long filesize = ftell(file);
 	if (filesize <= 0 || offset > (size_t)filesize) {
-		printf("invalid file parameters: filesize=%ld, offset=%ld\n",
+		printf("invalid file parameters: filesize=%ld, offset=%zu\n",
 			filesize, offset);
 		return NULL;
 	}
@@ -392,38 +392,47 @@ void clean_up_text(unsigned char *plain, size_t plain_len)
 	unsigned char *write = plain; /* points to where the next character 
 										in the cleaned text should go */
 
-	/* read - plain < plain_len ensures we never read beyond plain_len, 
-		whether or not '\0' is present */
-	while (*read != '\0' && read - plain < plain_len) {
+	/* find end of impaired text */
+	size_t pos = 0;
+	while (pos < plain_len && *read != '\0') {
+		pos++;
+		read++;
+	}
+
+	read = plain; /* reset pointer */
+	size_t processed = 0;
+
+	while (processed < pos) {
 		if (*read == 'i' || *read == 'u') {
-			int i_count = 0;
-			int u_count = 0;
+			size_t i_count = 0;
+			size_t u_count = 0;
 
 			/* count consecutive i's and u's */
-			while (*read == 'i' || *read == 'u') {
+			while (processed < pos && (*read == 'i' || *read == 'u')) {
 				if (*read == 'i') i_count++;
-				if (*read == 'u') u_count++;
+				else if (*read == 'u') u_count++;
 				read++;
+				processed++;
 			}
 
 			/* replace with the more frequent letter */
-			*write = (i_count >= u_count) ? 'i' : 'u';
-			write++;
+			*write++ = (i_count >= u_count) ? 'i' : 'u';
 		} else {
-			/* simply copy all other chars */
+			/* simply copy all other characters */
 			*write++ = *read++;
+			processed++;
 		}
 	}
-
-	if (read - plain < plain_len) {
-		*write++ = *read++; // copy \0
+	
+	/* write \0 at the end of the cleaned up text */
+	if (pos < plain_len) {
+		*write++ = '\0';
 	}
 
-	/* copy the rest of the text (unimpaired text) */
-	size_t remaining_len = plain_len - (read - plain);
-
-	if (remaining_len > 0) {
-		memcpy(write, read, remaining_len);
+	/* copy rest of unimpaired text without changing */
+	size_t remaining = plain_len - pos - 1;
+	if (remaining > 0) {
+		memmove(write, plain + pos + 1, remaining);
 	}
 }
 
@@ -566,6 +575,10 @@ int main()
 	/*-- Clean Up Text ------------------------------------------------- */
 	clean_up_text(matching_plain, matching_plain_len);
 	/*------------------------------------------------------------------ */
+
+	printf("Full cleaned-up data:\n");
+	fwrite(matching_plain, 1, matching_plain_len, stdout);
+	printf("\n");
 
 	/*-- Encrypt ------------------------------------------------------- */
 	/* IV is required for the SM4-CTR: CTR mode turn the block cipher 
